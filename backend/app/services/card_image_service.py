@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
 
+import qrcode
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 
@@ -208,10 +209,7 @@ def generate_card_image(member: dict[str, Any], backend_public_url: str) -> byte
             draw_back.text((x_value, y), str(value), font=_font(max(28, int(17 * sy_b)), True), fill=(0, 0, 0))
             y += int(32 * sy_b)
 
-    qr_source = str(member.get("qr_url", ""))
-    if qr_source and not qr_source.startswith("http"):
-        qr_source = _resolve_local_asset(qr_source)
-    qr_img = _load_image(qr_source).convert("RGBA")
+    qr_img = qrcode.make(member.get("verify_url", "")).convert("RGBA")
     qr_w = int(96 * sx_b)
     qr_h = int(88 * sy_b)
     qr_x = int(20 * sx_b)
