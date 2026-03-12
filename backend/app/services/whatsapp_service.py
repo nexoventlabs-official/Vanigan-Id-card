@@ -345,7 +345,7 @@ async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
 
 async def _send_referral_link(wa_id: str, member: dict[str, Any]) -> None:
     referral_code = member.get("referral_code", member.get("unique_id", ""))
-    referral_link = f"https://wa.me/{settings.whatsapp_phone_number_id}?text=REF_{referral_code}"
+    referral_link = f"https://wa.me/{settings.whatsapp_bot_number}?text=REF_{referral_code}"
     count = member.get("referral_count", 0)
     await send_text(
         wa_id,
@@ -362,7 +362,7 @@ async def _handle_organizer(wa_id: str, member: dict[str, Any]) -> None:
     count = member.get("referral_count", 0)
     remaining = max(0, ORGANIZER_THRESHOLD - count)
     referral_code = member.get("referral_code", member.get("unique_id", ""))
-    referral_link = f"https://wa.me/{settings.whatsapp_phone_number_id}?text=REF_{referral_code}"
+    referral_link = f"https://wa.me/{settings.whatsapp_bot_number}?text=REF_{referral_code}"
 
     if remaining == 0:
         await send_text(

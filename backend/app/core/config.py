@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     whatsapp_access_token: str = ""
     whatsapp_phone_number_id: str = ""
+    whatsapp_bot_number: str = ""
     whatsapp_verify_token: str = "vanigan_whatsapp_verify_2026"
     whatsapp_public_base_url: str = ""
 
