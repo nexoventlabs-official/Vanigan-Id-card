@@ -31,14 +31,6 @@ class Settings(BaseSettings):
     whatsapp_phone_number_id: str = ""
     whatsapp_verify_token: str = "vanigan_whatsapp_verify_2026"
     whatsapp_public_base_url: str = ""
-    whatsapp_download_template_name: str = ""
-    whatsapp_download_template_lang: str = "en"
-    whatsapp_view_template_name: str = ""
-    whatsapp_view_template_lang: str = "en"
-    whatsapp_referral_template_name: str = ""
-    whatsapp_referral_template_lang: str = "en"
-    whatsapp_organizer_template_name: str = ""
-    whatsapp_organizer_template_lang: str = "en"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

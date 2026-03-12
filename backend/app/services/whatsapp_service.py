@@ -154,205 +154,6 @@ async def send_list(to_wa_id: str, body: str, button_text: str, rows: list[tuple
 
 
 
-async def send_template_url_button(to_wa_id: str, template_name: str, lang: str, url_suffix: str) -> bool:
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
-        return False
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_wa_id,
-        "type": "template",
-        "template": {
-            "name": template_name,
-            "language": {"code": lang},
-            "components": [
-                {
-                    "type": "button",
-                    "sub_type": "url",
-                    "index": "0",
-                    "parameters": [{"type": "text", "text": url_suffix}],
-                }
-            ],
-        },
-    }
-    try:
-        _json_post(_messages_url(), payload, settings.whatsapp_access_token)
-        return True
-    except (HTTPError, URLError, ValueError):
-        return False
-
-
-async def send_download_template(to_wa_id: str, member: dict[str, Any]) -> bool:
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
-        return False
-    if not settings.whatsapp_download_template_name:
-        return False
-
-    unique_id = member.get("unique_id", "")
-    if not unique_id:
-        return False
-
-    download_url = f"{_public_base_url()}{settings.api_v1_prefix}/public/card-image/{unique_id}"
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_wa_id,
-        "type": "template",
-        "template": {
-            "name": settings.whatsapp_download_template_name,
-            "language": {"code": settings.whatsapp_download_template_lang},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": member.get("name", "")},
-                        {"type": "text", "text": member.get("membership", "")},
-                        {"type": "text", "text": member.get("contact_number", "")},
-                    ],
-                },
-                {
-                    "type": "button",
-                    "sub_type": "url",
-                    "index": "0",
-                    "parameters": [{"type": "text", "text": unique_id}],
-                },
-            ],
-        },
-    }
-    try:
-        _json_post(_messages_url(), payload, settings.whatsapp_access_token)
-        return True
-    except (HTTPError, URLError, ValueError):
-        return False
-
-
-async def send_view_card_template(to_wa_id: str, member: dict[str, Any]) -> bool:
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
-        return False
-    if not settings.whatsapp_view_template_name:
-        return False
-
-    unique_id = member.get("unique_id", "")
-    if not unique_id:
-        return False
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_wa_id,
-        "type": "template",
-        "template": {
-            "name": settings.whatsapp_view_template_name,
-            "language": {"code": settings.whatsapp_view_template_lang},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": member.get("name", "")},
-                        {"type": "text", "text": member.get("membership", "")},
-                        {"type": "text", "text": member.get("contact_number", "")},
-                    ],
-                },
-                {
-                    "type": "button",
-                    "sub_type": "url",
-                    "index": "0",
-                    "parameters": [{"type": "text", "text": unique_id}],
-                },
-            ],
-        },
-    }
-    try:
-        _json_post(_messages_url(), payload, settings.whatsapp_access_token)
-        return True
-    except (HTTPError, URLError, ValueError):
-        return False
-
-
-async def send_referral_template(to_wa_id: str, member: dict[str, Any]) -> bool:
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
-        return False
-    if not settings.whatsapp_referral_template_name:
-        return False
-
-    referral_code = member.get("referral_code", member.get("unique_id", ""))
-    referral_link = f"https://wa.me/{settings.whatsapp_phone_number_id}?text=REF_{referral_code}"
-    count = member.get("referral_count", 0)
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_wa_id,
-        "type": "template",
-        "template": {
-            "name": settings.whatsapp_referral_template_name,
-            "language": {"code": settings.whatsapp_referral_template_lang},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": member.get("name", "")},
-                        {"type": "text", "text": referral_link},
-                        {"type": "text", "text": str(count)},
-                    ],
-                },
-                {
-                    "type": "button",
-                    "sub_type": "copy_code",
-                    "index": "0",
-                    "parameters": [{"type": "coupon_code", "coupon_code": referral_code}],
-                },
-            ],
-        },
-    }
-    try:
-        _json_post(_messages_url(), payload, settings.whatsapp_access_token)
-        return True
-    except (HTTPError, URLError, ValueError):
-        return False
-
-
-async def send_organizer_template(to_wa_id: str, member: dict[str, Any]) -> bool:
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
-        return False
-    if not settings.whatsapp_organizer_template_name:
-        return False
-
-    referral_code = member.get("referral_code", member.get("unique_id", ""))
-    referral_link = f"https://wa.me/{settings.whatsapp_phone_number_id}?text=REF_{referral_code}"
-    count = member.get("referral_count", 0)
-    remaining = max(0, ORGANIZER_THRESHOLD - count)
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_wa_id,
-        "type": "template",
-        "template": {
-            "name": settings.whatsapp_organizer_template_name,
-            "language": {"code": settings.whatsapp_organizer_template_lang},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": member.get("name", "")},
-                        {"type": "text", "text": str(count)},
-                        {"type": "text", "text": str(remaining)},
-                    ],
-                },
-                {
-                    "type": "button",
-                    "sub_type": "copy_code",
-                    "index": "0",
-                    "parameters": [{"type": "coupon_code", "coupon_code": referral_code}],
-                },
-            ],
-        },
-    }
-    try:
-        _json_post(_messages_url(), payload, settings.whatsapp_access_token)
-        return True
-    except (HTTPError, URLError, ValueError):
-        return False
-
-
 async def _start_flow(wa_id: str) -> None:
     sessions = get_whatsapp_session_collection()
     await sessions.update_one(
@@ -422,11 +223,7 @@ async def _send_download_cta(wa_id: str, member: dict[str, Any]) -> None:
         await send_text(wa_id, "Card ID not found for this account.")
         return
 
-    if settings.whatsapp_download_template_name:
-        sent = await send_download_template(wa_id, member)
-        if sent:
-            return
-
+    download_url = f"{_public_base_url()}{settings.api_v1_prefix}/public/card-image/{unique_id}"
     details = (
         f"Name: {member.get('name', '')}\n"
         f"Membership: {member.get('membership', '')}\n"
@@ -466,11 +263,6 @@ async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
         return True
 
     if action == "menu:viewcard":
-        if settings.whatsapp_view_template_name:
-            sent = await send_view_card_template(wa_id, member)
-            if sent:
-                await _send_registered_menu(wa_id, member)
-                return True
         view_url = f"{_public_base_url()}/verify/{unique_id}"
         await send_text(wa_id, f"View your card here:\n{view_url}")
         await _send_registered_menu(wa_id, member)
@@ -552,12 +344,6 @@ async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
 
 
 async def _send_referral_link(wa_id: str, member: dict[str, Any]) -> None:
-    if settings.whatsapp_referral_template_name:
-        sent = await send_referral_template(wa_id, member)
-        if sent:
-            await _send_registered_menu(wa_id, member)
-            return
-
     referral_code = member.get("referral_code", member.get("unique_id", ""))
     referral_link = f"https://wa.me/{settings.whatsapp_phone_number_id}?text=REF_{referral_code}"
     count = member.get("referral_count", 0)
@@ -586,12 +372,6 @@ async def _handle_organizer(wa_id: str, member: dict[str, Any]) -> None:
         )
         await _send_registered_menu(wa_id, member)
         return
-
-    if settings.whatsapp_organizer_template_name:
-        sent = await send_organizer_template(wa_id, member)
-        if sent:
-            await _send_registered_menu(wa_id, member)
-            return
 
     await send_text(
         wa_id,
