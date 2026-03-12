@@ -181,7 +181,7 @@ async def _start_flow(wa_id: str) -> None:
             "We will collect details step-by-step."
         ),
     )
-    await send_text(wa_id, "Step 1/7: Send your NAME")
+    await send_text(wa_id, "Send your NAME")
 
 
 async def _find_registered_member(wa_id: str) -> dict[str, Any] | None:
@@ -433,13 +433,13 @@ async def _handle_poll_vote(wa_id: str, action: str) -> None:
 
 async def _send_next_prompt(wa_id: str, step: str) -> None:
     prompts = {
-        "name": "Step 1/7: Send your NAME",
-        "assembly": "Step 2/7: Send ASSEMBLY",
-        "district": "Step 3/7: Send DISTRICT",
-        "dob": "Step 4/7: Send DOB in DD/MM/YYYY (example 01/10/2000)",
-        "blood_group": "Step 5/7: Choose BLOOD GROUP",
-        "address": "Step 6/7: Send ADDRESS (max 80 characters)",
-        "photo": "Step 7/7: Upload PHOTO image (jpg/png/webp)",
+        "name": "Send your NAME",
+        "assembly": "Send ASSEMBLY",
+        "district": "Send DISTRICT",
+        "dob": "Send DOB in DD/MM/YYYY (example 01/10/2000)",
+        "blood_group": "Choose BLOOD GROUP",
+        "address": "Send ADDRESS (max 80 characters)",
+        "photo": "Upload PHOTO image (jpg/png/webp)",
     }
 
     if step == "blood_group":
@@ -672,7 +672,7 @@ async def process_whatsapp_payload(payload: dict[str, Any]) -> None:
                 upsert=True,
             )
             await send_text(wa_id, "Welcome! You were referred by a Vanigan member.\nLet's get your ID card.")
-            await send_text(wa_id, "Step 1/7: Send your NAME")
+            await send_text(wa_id, "Send your NAME")
             return
         else:
             await send_text(wa_id, "Invalid referral link. Send Hi to start a new application.")
