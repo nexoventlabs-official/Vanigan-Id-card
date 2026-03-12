@@ -1,0 +1,24 @@
+### Reset All Data - Delete all members, sessions, polls from DB and photos from Cloudinary
+### Update the host below to match your environment (localhost or Render URL)
+
+@host = https://vanigan-id-card.onrender.com
+@adminKey = change-this-admin-key
+
+### -------------------------------------------------------
+### 1. Reset ALL data (members + sessions + polls + cloudinary photos)
+### -------------------------------------------------------
+DELETE {{host}}/api/v1/admin/reset-all
+X-Admin-Key: {{adminKey}}
+
+### -------------------------------------------------------
+### 2. Delete a SINGLE member by unique_id (also removes photo from Cloudinary)
+###    Replace TVSM000000000 with the actual unique_id
+### -------------------------------------------------------
+DELETE {{host}}/api/v1/admin/members/TVSM000000000
+X-Admin-Key: {{adminKey}}
+
+### -------------------------------------------------------
+### 3. List all members (to find unique_ids)
+### -------------------------------------------------------
+GET {{host}}/api/v1/admin/members
+X-Admin-Key: {{adminKey}}
