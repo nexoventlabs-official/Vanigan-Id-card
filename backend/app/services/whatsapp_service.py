@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
 from io import BytesIO
@@ -473,7 +474,7 @@ def _extract_text_or_action(msg: dict[str, Any]) -> tuple[str, str | None]:
     return msg_type, None
 
 
-async def _download_and_store_whatsapp_image(media_id: str) -> str:
+def _download_and_store_whatsapp_image_sync(media_id: str) -> str:
     if not settings.whatsapp_access_token:
         raise ValueError("WhatsApp access token missing")
 
@@ -485,6 +486,10 @@ async def _download_and_store_whatsapp_image(media_id: str) -> str:
     content = _bytes_get(media_url, settings.whatsapp_access_token)
     uploaded = cloudinary.uploader.upload(content, folder="vanigan/photos")
     return uploaded["secure_url"]
+
+
+async def _download_and_store_whatsapp_image(media_id: str) -> str:
+    return await asyncio.to_thread(_download_and_store_whatsapp_image_sync, media_id)
 
 
 def _is_greeting(text: str) -> bool:
@@ -603,9 +608,10 @@ async def process_whatsapp_payload(payload: dict[str, Any]) -> None:
         if msg_kind != "image" or not content:
             await send_text(wa_id, "Please upload a photo image to continue.")
             return
+        await send_text(wa_id, "Generating your card... please wait.")
         try:
             photo_url = await _download_and_store_whatsapp_image(content)
-        except (HTTPError, URLError, ValueError):
+        except (HTTPError, URLError, ValueError, Exception):
             await send_text(wa_id, "Unable to process this image. Please upload again.")
             return
 

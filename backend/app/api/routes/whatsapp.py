@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
 from app.core.config import settings
@@ -21,7 +21,7 @@ async def verify_webhook(
 
 
 @router.post("/webhook")
-async def receive_webhook(request: Request):
+async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     payload: dict[str, Any] = await request.json()
 
     if settings.environment != "development":
@@ -32,7 +32,7 @@ async def receive_webhook(request: Request):
             raise HTTPException(status_code=403, detail="Missing signature")
         _ = raw_body
 
-    await process_whatsapp_payload(payload)
+    background_tasks.add_task(process_whatsapp_payload, payload)
     return {"status": "ok"}
 
 
