@@ -32,13 +32,18 @@ def _resolve_local_asset(source: str) -> str:
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     font_candidates = [
+        # Windows
         "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
         "C:/Windows/Fonts/segoeuib.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf",
+        # Linux (DejaVu – installed via fonts-dejavu-core)
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        # macOS
+        "/System/Library/Fonts/Helvetica.ttc",
     ]
     for candidate in font_candidates:
         if Path(candidate).exists():
             return ImageFont.truetype(candidate, size=size)
-    return ImageFont.load_default()
+    return ImageFont.load_default(size=size)
 
 
 def _draw_centered(draw: ImageDraw.ImageDraw, text: str, y: int, width: int, font: ImageFont.ImageFont, fill: tuple[int, int, int]) -> None:
