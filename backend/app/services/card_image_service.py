@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -94,6 +95,19 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, 
     return wrapped_lines
 
 
+def _title(text: str) -> str:
+    return text.strip().title() if text else ""
+
+
+def _calc_age(dob_str: str) -> int:
+    try:
+        dob = date.fromisoformat(dob_str)
+        today = date.today()
+        return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    except (ValueError, TypeError):
+        return 0
+
+
 def generate_card_image(member: dict[str, Any], backend_public_url: str) -> bytes:
     front_url = "https://res.cloudinary.com/dqndhcmu2/image/upload/v1773232516/vanigan/templates/ID_Front.png"
     back_url = "https://res.cloudinary.com/dqndhcmu2/image/upload/v1773232519/vanigan/templates/ID_Back.png"
@@ -146,10 +160,10 @@ def generate_card_image(member: dict[str, Any], backend_public_url: str) -> byte
         "id": int(442 * sy),
     }
 
-    _draw_centered(draw_front, str(member.get("name", "")), front_positions["name"], width, _font(max(26, int(23 * sy)), True), (0, 146, 69))
-    _draw_centered(draw_front, str(member.get("membership", "")), front_positions["membership"], width, _font(max(24, int(19 * sy)), True), (0, 0, 0))
-    _draw_centered(draw_front, str(member.get("assembly", "")), front_positions["assembly"], width, _font(max(24, int(19 * sy)), True), (0, 0, 0))
-    _draw_centered(draw_front, str(member.get("district", "")), front_positions["district"], width, _font(max(24, int(19 * sy)), True), (0, 0, 0))
+    _draw_centered(draw_front, _title(str(member.get("name", ""))), front_positions["name"], width, _font(max(26, int(23 * sy)), True), (0, 146, 69))
+    _draw_centered(draw_front, _title(str(member.get("membership", ""))), front_positions["membership"], width, _font(max(24, int(19 * sy)), True), (0, 0, 0))
+    _draw_centered(draw_front, _title(str(member.get("assembly", ""))), front_positions["assembly"], width, _font(max(24, int(19 * sy)), True), (0, 0, 0))
+    _draw_centered(draw_front, _title(str(member.get("district", ""))), front_positions["district"], width, _font(max(24, int(19 * sy)), True), (0, 0, 0))
     _draw_centered(draw_front, str(member.get("unique_id", "")), front_positions["id"], width, _font(max(22, int(18 * sy)), True), (0, 0, 0))
 
     # Build back side
@@ -160,9 +174,10 @@ def generate_card_image(member: dict[str, Any], backend_public_url: str) -> byte
     sx_b = width / 421.0
 
     labels = ["DATE OF BIRTH", "AGE", "BLOOD GROUP", "ADDRESS", "CONTACT"]
+    dynamic_age = _calc_age(str(member.get("dob", "")))
     values = [
         str(member.get("dob", "")),
-        str(member.get("age", "")),
+        str(dynamic_age) if dynamic_age else str(member.get("age", "")),
         str(member.get("blood_group", "")),
         str(member.get("address", "")),
         str(member.get("contact_number", "")),

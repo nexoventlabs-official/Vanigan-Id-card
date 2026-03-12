@@ -15,3 +15,11 @@ def get_member_collection():
 
 def get_whatsapp_session_collection():
     return mongo_db["whatsapp_sessions"]
+
+
+def get_referral_collection():
+    return mongo_db["referrals"]
+
+
+def get_poll_collection():
+    return mongo_db["polls"]

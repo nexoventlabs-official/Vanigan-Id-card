@@ -11,17 +11,32 @@ from urllib.request import Request, urlopen
 import cloudinary.uploader
 
 from app.core.config import settings
-from app.core.db import get_member_collection, get_whatsapp_session_collection
+from app.core.db import get_member_collection, get_whatsapp_session_collection, get_poll_collection
 from app.models.member import member_document
 from app.services.id_generator import generate_unique_member_id
 from app.services.otp_service import normalize_contact_number
 from app.services.qr_service import generate_qr
 
 GRAPH_API_BASE = "https://graph.facebook.com/v22.0"
+ORGANIZER_THRESHOLD = 25
 
 
 def _now_iso() -> str:
     return datetime.utcnow().isoformat()
+
+
+def _title(text: str) -> str:
+    return text.strip().title() if text else ""
+
+
+def _calc_age(dob_str: str) -> int:
+    try:
+        from datetime import date
+        dob = date.fromisoformat(dob_str)
+        today = date.today()
+        return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    except (ValueError, TypeError):
+        return 0
 
 
 def _public_base_url() -> str:
@@ -233,7 +248,7 @@ async def _start_flow(wa_id: str) -> None:
             "We will collect details step-by-step."
         ),
     )
-    await send_text(wa_id, "Step 1/8: Send your NAME")
+    await send_text(wa_id, "Step 1/7: Send your NAME")
 
 
 async def _find_registered_member(wa_id: str) -> dict[str, Any] | None:
@@ -244,7 +259,8 @@ async def _find_registered_member(wa_id: str) -> dict[str, Any] | None:
             "contact_number": contact,
             "status": {"$ne": "rejected"},
         },
-        {"_id": 0, "unique_id": 1, "name": 1, "membership": 1, "contact_number": 1},
+        {"_id": 0, "unique_id": 1, "name": 1, "membership": 1, "contact_number": 1,
+         "referral_code": 1, "referral_count": 1},
         sort=[("updated_at", -1)],
     )
 
@@ -253,15 +269,16 @@ async def _send_registered_menu(wa_id: str, member: dict[str, Any]) -> None:
     await send_list(
         wa_id,
         (
-            f"Welcome back {member.get('name', 'Member')}!\n"
+            f"Welcome back {_title(member.get('name', 'Member'))}!\n"
             "Choose an option from menu."
         ),
         "Open Menu",
         [
             ("menu:download", "Download Card"),
-            ("menu:edit", "Edit Details"),
-            ("menu:refer", "Refer"),
-            ("menu:contact", "Contact"),
+            ("menu:viewcard", "View Card"),
+            ("menu:organizer", "Become a Organizer"),
+            ("menu:poll", "Poll"),
+            ("menu:referral", "Referral Link"),
         ],
     )
 
@@ -287,7 +304,8 @@ async def _send_download_cta(wa_id: str, member: dict[str, Any]) -> None:
 
 
 async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
-    if action not in {"menu:download", "menu:edit", "menu:refer", "menu:contact"} and not action.startswith("direct_download:"):
+    registered_actions = {"menu:download", "menu:viewcard", "menu:organizer", "menu:poll", "menu:referral"}
+    if action not in registered_actions and not action.startswith("direct_download:") and not action.startswith("poll:"):
         return False
 
     if action.startswith("direct_download:"):
@@ -299,50 +317,130 @@ async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
             await _send_registered_menu(wa_id, member)
         return True
 
+    if action.startswith("poll:"):
+        await _handle_poll_vote(wa_id, action)
+        return True
+
     member = await _find_registered_member(wa_id)
     if not member:
         await send_text(wa_id, "No existing card found for this number. Send Hi to start a new application.")
         return True
 
     unique_id = member.get("unique_id", "")
+
     if action == "menu:download":
         await _send_download_cta(wa_id, member)
         return True
 
-    if action == "menu:edit":
-        await send_text(wa_id, "Let us update your details. We will start from beginning and keep your WhatsApp number.")
-        await _start_flow(wa_id)
-        return True
-
-    if action == "menu:refer":
-        refer_text = (
-            "Refer Vanigan ID to your contacts:\n"
-            "1) Save this number\n"
-            "2) Send Hi\n"
-            "3) Complete the form to get ID card"
-        )
-        await send_text(wa_id, refer_text)
+    if action == "menu:viewcard":
+        view_url = f"{_public_base_url()}/verify/{unique_id}"
+        await send_text(wa_id, f"View your card here:\n{view_url}")
         await _send_registered_menu(wa_id, member)
         return True
 
-    if action == "menu:contact":
-        await send_text(wa_id, "For support, reply here with your issue and our team will contact you.")
-        await _send_registered_menu(wa_id, member)
+    if action == "menu:organizer":
+        await _handle_organizer(wa_id, member)
+        return True
+
+    if action == "menu:poll":
+        await _send_poll(wa_id)
+        return True
+
+    if action == "menu:referral":
+        await _send_referral_link(wa_id, member)
         return True
 
     return False
 
 
+async def _send_referral_link(wa_id: str, member: dict[str, Any]) -> None:
+    referral_code = member.get("referral_code", member.get("unique_id", ""))
+    referral_link = f"https://wa.me/{settings.whatsapp_phone_number_id}?text=REF_{referral_code}"
+    count = member.get("referral_count", 0)
+    await send_text(
+        wa_id,
+        (
+            f"Your Referral Link:\n{referral_link}\n\n"
+            f"Total Referrals: {count}\n"
+            "Share this link with your friends. When they register using your link, it counts as your referral."
+        ),
+    )
+    await _send_registered_menu(wa_id, member)
+
+
+async def _handle_organizer(wa_id: str, member: dict[str, Any]) -> None:
+    count = member.get("referral_count", 0)
+    remaining = max(0, ORGANIZER_THRESHOLD - count)
+    referral_code = member.get("referral_code", member.get("unique_id", ""))
+    referral_link = f"https://wa.me/{settings.whatsapp_phone_number_id}?text=REF_{referral_code}"
+
+    if remaining == 0:
+        await send_text(
+            wa_id,
+            f"Congratulations! You have {count} referrals and are eligible to become an Organizer.\n"
+            "Our team will contact you shortly."
+        )
+        await _send_registered_menu(wa_id, member)
+        return
+
+    await send_text(
+        wa_id,
+        (
+            f"To become an Organizer, you need at least {ORGANIZER_THRESHOLD} referrals.\n\n"
+            f"Your referral count: {count}\n"
+            f"Remaining: {remaining}\n\n"
+            "Share your referral link to invite more members!"
+        ),
+    )
+    await send_reply_buttons(wa_id, f"Your Referral Link:\n{referral_link}", [("menu:referral", "Copy Link")])
+
+
+async def _send_poll(wa_id: str) -> None:
+    await send_list(
+        wa_id,
+        "Cast your vote in the Poll.\nChoose your preferred party:",
+        "Vote Now",
+        [
+            ("poll:DMK", "1. DMK"),
+            ("poll:AIADMK", "2. AIADMK"),
+            ("poll:NTK", "3. NTK"),
+            ("poll:TVK", "4. TVK"),
+        ],
+    )
+
+
+async def _handle_poll_vote(wa_id: str, action: str) -> None:
+    party = action.split(":", 1)[1]
+    polls = get_poll_collection()
+
+    existing = await polls.find_one({"wa_id": wa_id})
+    if existing:
+        await send_text(wa_id, f"You have already voted for {existing.get('party', 'a party')}. Only one vote per member is allowed.")
+        member = await _find_registered_member(wa_id)
+        if member:
+            await _send_registered_menu(wa_id, member)
+        return
+
+    await polls.insert_one({
+        "wa_id": wa_id,
+        "party": party,
+        "voted_at": _now_iso(),
+    })
+    await send_text(wa_id, f"Your vote for *{party}* has been recorded. Thank you!")
+    member = await _find_registered_member(wa_id)
+    if member:
+        await _send_registered_menu(wa_id, member)
+
+
 async def _send_next_prompt(wa_id: str, step: str) -> None:
     prompts = {
-        "name": "Step 1/8: Send your NAME",
-        "assembly": "Step 2/8: Send ASSEMBLY",
-        "district": "Step 3/8: Send DISTRICT",
-        "dob": "Step 4/8: Send DOB in YYYY-MM-DD (example 2000-10-01)",
-        "age": "Step 5/8: Send AGE (number)",
-        "blood_group": "Step 6/8: Choose BLOOD GROUP",
-        "address": "Step 7/8: Send ADDRESS",
-        "photo": "Step 8/8: Upload PHOTO image (jpg/png/webp)",
+        "name": "Step 1/7: Send your NAME",
+        "assembly": "Step 2/7: Send ASSEMBLY",
+        "district": "Step 3/7: Send DISTRICT",
+        "dob": "Step 4/7: Send DOB in YYYY-MM-DD (example 2000-10-01)",
+        "blood_group": "Step 5/7: Choose BLOOD GROUP",
+        "address": "Step 6/7: Send ADDRESS",
+        "photo": "Step 7/7: Upload PHOTO image (jpg/png/webp)",
     }
 
     if step == "blood_group":
@@ -367,14 +465,15 @@ async def _send_next_prompt(wa_id: str, step: str) -> None:
 
 
 async def _send_confirmation(wa_id: str, data: dict[str, Any]) -> None:
+    age = _calc_age(data.get("dob", ""))
     summary = (
         "Please confirm your details:\n"
-        f"Name: {data.get('name', '')}\n"
-        f"Membership: {data.get('membership', '')}\n"
-        f"Assembly: {data.get('assembly', '')}\n"
-        f"District: {data.get('district', '')}\n"
+        f"Name: {_title(data.get('name', ''))}\n"
+        f"Membership: {_title(data.get('membership', ''))}\n"
+        f"Assembly: {_title(data.get('assembly', ''))}\n"
+        f"District: {_title(data.get('district', ''))}\n"
         f"DOB: {data.get('dob', '')}\n"
-        f"Age: {data.get('age', '')}\n"
+        f"Age: {age}\n"
         f"Blood Group: {data.get('blood_group', '')}\n"
         f"Address: {data.get('address', '')}\n"
         f"WhatsApp Number: {data.get('contact_number', '')}"
@@ -395,26 +494,38 @@ async def _save_member_and_send_card(wa_id: str, data: dict[str, Any]) -> str | 
     verify_url = f"{public_base}/verify/{unique_id}"
     qr_url = generate_qr(unique_id, verify_url)
 
+    age = _calc_age(data.get("dob", ""))
+
     payload = member_document(
         {
             "unique_id": unique_id,
-            "name": data["name"],
-            "membership": data["membership"],
-            "assembly": data["assembly"],
-            "district": data["district"],
+            "name": _title(data["name"]),
+            "membership": _title(data["membership"]),
+            "assembly": _title(data["assembly"]),
+            "district": _title(data["district"]),
             "dob": data["dob"],
-            "age": int(data["age"]),
+            "age": age,
             "blood_group": data["blood_group"],
             "address": data["address"],
             "contact_number": data["contact_number"],
             "photo_url": data["photo_url"],
             "qr_url": qr_url,
             "verify_url": verify_url,
+            "referral_code": unique_id,
+            "referred_by": data.get("referred_by"),
             "status": "approved",
         }
     )
 
     await members.insert_one(payload)
+
+    # If referred by someone, increment their referral count
+    referred_by = data.get("referred_by")
+    if referred_by:
+        await members.update_one(
+            {"unique_id": referred_by},
+            {"$inc": {"referral_count": 1}},
+        )
 
     image_url = f"{public_base}{settings.api_v1_prefix}/public/card-image/{unique_id}"
     verify_page = f"{public_base}/verify/{unique_id}"
@@ -530,6 +641,44 @@ async def process_whatsapp_payload(payload: dict[str, Any]) -> None:
             await _send_registered_menu(wa_id, existing_member)
             return
 
+    # Handle referral link: REF_<unique_id>
+    if msg_kind == "text" and content and content.upper().startswith("REF_"):
+        referral_code = content[4:].strip()
+        # Check if referrer exists
+        members = get_member_collection()
+        referrer = await members.find_one({"unique_id": referral_code}, {"_id": 1, "unique_id": 1})
+        if referrer:
+            # Check if already registered
+            existing_member = await _find_registered_member(wa_id)
+            if existing_member:
+                await send_text(wa_id, "You are already registered. Referral link is for new members only.")
+                await _send_registered_menu(wa_id, existing_member)
+                return
+            # Start flow with referred_by set
+            await sessions.update_one(
+                {"wa_id": wa_id},
+                {
+                    "$set": {
+                        "wa_id": wa_id,
+                        "step": "name",
+                        "data": {
+                            "contact_number": normalize_contact_number(wa_id),
+                            "membership": "Member",
+                            "referred_by": referral_code,
+                        },
+                        "in_progress": True,
+                        "updated_at": _now_iso(),
+                    }
+                },
+                upsert=True,
+            )
+            await send_text(wa_id, "Welcome! You were referred by a Vanigan member.\nLet's get your ID card.")
+            await send_text(wa_id, "Step 1/7: Send your NAME")
+            return
+        else:
+            await send_text(wa_id, "Invalid referral link. Send Hi to start a new application.")
+            return
+
     if msg_kind == "action" and content:
         handled = await _handle_registered_menu_action(wa_id, content)
         if handled:
@@ -642,13 +791,8 @@ async def process_whatsapp_payload(payload: dict[str, Any]) -> None:
             await send_text(wa_id, "Invalid DOB format. Use YYYY-MM-DD.")
             return
 
-    if step == "age":
-        if not content.isdigit():
-            await send_text(wa_id, "Age must be a number.")
-            return
-
-    fields_order = ["name", "assembly", "district", "dob", "age", "blood_group", "address", "photo"]
-    if step in {"name", "assembly", "district", "dob", "age", "address"}:
+    fields_order = ["name", "assembly", "district", "dob", "blood_group", "address", "photo"]
+    if step in {"name", "assembly", "district", "dob", "address"}:
         data[step] = content
 
     current_index = fields_order.index(step)
