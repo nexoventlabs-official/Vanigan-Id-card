@@ -532,10 +532,10 @@ async def _save_member_and_send_card(wa_id: str, data: dict[str, Any]) -> str | 
     await send_text(
         wa_id,
         (
-            "Your card is generated successfully.\n"
-            f"Member ID: {unique_id}\n"
-            f"Download Card Image: {image_url}\n"
-            f"View Card Page: {verify_page}"
+            "🎉 *Your Vanigan ID Card is ready!*\n\n"
+            f"📋 *Member ID:* {unique_id}\n\n"
+            f"📥 *Download Card:*\n{image_url}\n\n"
+            f"🔗 *View Card:*\n{verify_page}"
         ),
     )
     await _send_registered_menu(
