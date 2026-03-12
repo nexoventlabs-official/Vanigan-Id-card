@@ -396,6 +396,15 @@ async def _handle_organizer(wa_id: str, member: dict[str, Any]) -> None:
 
 
 async def _send_poll(wa_id: str) -> None:
+    polls = get_poll_collection()
+    existing = await polls.find_one({"wa_id": wa_id})
+    if existing:
+        await send_text(wa_id, f"You have already voted for *{existing.get('party', 'a party')}*. Only one vote per member is allowed.")
+        member = await _find_registered_member(wa_id)
+        if member:
+            await _send_registered_menu(wa_id, member)
+        return
+
     await send_list(
         wa_id,
         "Cast your vote in the Poll.\nChoose your preferred party:",
