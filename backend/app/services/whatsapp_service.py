@@ -307,6 +307,91 @@ async def send_referral_template(to_wa_id: str, member: dict[str, Any]) -> bool:
         return True
     except (HTTPError, URLError, ValueError):
         return False
+
+
+async def send_organizer_template(to_wa_id: str, member: dict[str, Any]) -> bool:
+    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+        return False
+    if not settings.whatsapp_organizer_template_name:
+        return False
+
+    referral_code = member.get("referral_code", member.get("unique_id", ""))
+    referral_link = f"https://wa.me/{settings.whatsapp_phone_number_id}?text=REF_{referral_code}"
+    count = member.get("referral_count", 0)
+    remaining = max(0, ORGANIZER_THRESHOLD - count)
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_wa_id,
+        "type": "template",
+        "template": {
+            "name": settings.whatsapp_organizer_template_name,
+            "language": {"code": settings.whatsapp_organizer_template_lang},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": member.get("name", "")},
+                        {"type": "text", "text": str(count)},
+                        {"type": "text", "text": str(remaining)},
+                    ],
+                },
+                {
+                    "type": "button",
+                    "sub_type": "copy_code",
+                    "index": "0",
+                    "parameters": [{"type": "coupon_code", "coupon_code": referral_link}],
+                },
+            ],
+        },
+    }
+    try:
+        _json_post(_messages_url(), payload, settings.whatsapp_access_token)
+        return True
+    except (HTTPError, URLError, ValueError):
+        return False
+
+
+async def _start_flow(wa_id: str) -> None:
+    sessions = get_whatsapp_session_collection()
+    await sessions.update_one(
+        {"wa_id": wa_id},
+        {
+            "$set": {
+                "wa_id": wa_id,
+                "step": "name",
+                "data": {
+                    "contact_number": normalize_contact_number(wa_id),
+                    "membership": "Member",
+                },
+                "in_progress": True,
+                "updated_at": _now_iso(),
+            }
+        },
+        upsert=True,
+    )
+
+    await send_text(
+        wa_id,
+        (
+            "Welcome to Vanigan ID WhatsApp Bot.\n"
+            f"Detected number: {normalize_contact_number(wa_id)}\n"
+            "We will collect details step-by-step."
+        ),
+    )
+    await send_text(wa_id, "Step 1/7: Send your NAME")
+
+
+async def _find_registered_member(wa_id: str) -> dict[str, Any] | None:
+    members = get_member_collection()
+    contact = normalize_contact_number(wa_id)
+    return await members.find_one(
+        {
+            "contact_number": contact,
+            "status": {"$ne": "rejected"},
+        },
+        {"_id": 0, "unique_id": 1, "name": 1, "membership": 1, "contact_number": 1,
+         "referral_code": 1, "referral_count": 1},
         sort=[("updated_at", -1)],
     )
 
@@ -500,6 +585,12 @@ async def _handle_organizer(wa_id: str, member: dict[str, Any]) -> None:
         )
         await _send_registered_menu(wa_id, member)
         return
+
+    if settings.whatsapp_organizer_template_name:
+        sent = await send_organizer_template(wa_id, member)
+        if sent:
+            await _send_registered_menu(wa_id, member)
+            return
 
     await send_text(
         wa_id,

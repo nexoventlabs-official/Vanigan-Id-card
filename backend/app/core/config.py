@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     whatsapp_view_template_lang: str = "en"
     whatsapp_referral_template_name: str = ""
     whatsapp_referral_template_lang: str = "en"
+    whatsapp_organizer_template_name: str = ""
+    whatsapp_organizer_template_lang: str = "en"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
