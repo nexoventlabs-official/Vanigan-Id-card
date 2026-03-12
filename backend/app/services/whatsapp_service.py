@@ -32,10 +32,15 @@ def _title(text: str) -> str:
 def _calc_age(dob_str: str) -> int:
     try:
         from datetime import date
-        dob = date.fromisoformat(dob_str)
+        # Support DD/MM/YYYY format
+        if '/' in dob_str:
+            parts = dob_str.strip().split('/')
+            dob = date(int(parts[2]), int(parts[1]), int(parts[0]))
+        else:
+            dob = date.fromisoformat(dob_str)
         today = date.today()
         return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, IndexError):
         return 0
 
 
@@ -507,9 +512,9 @@ async def _send_next_prompt(wa_id: str, step: str) -> None:
         "name": "Step 1/7: Send your NAME",
         "assembly": "Step 2/7: Send ASSEMBLY",
         "district": "Step 3/7: Send DISTRICT",
-        "dob": "Step 4/7: Send DOB in YYYY-MM-DD (example 2000-10-01)",
+        "dob": "Step 4/7: Send DOB in DD/MM/YYYY (example 01/10/2000)",
         "blood_group": "Step 5/7: Choose BLOOD GROUP",
-        "address": "Step 6/7: Send ADDRESS",
+        "address": "Step 6/7: Send ADDRESS (max 80 characters)",
         "photo": "Step 7/7: Upload PHOTO image (jpg/png/webp)",
     }
 
@@ -871,9 +876,19 @@ async def process_whatsapp_payload(payload: dict[str, Any]) -> None:
 
     if step == "dob":
         try:
-            datetime.strptime(content, "%Y-%m-%d")
-        except ValueError:
-            await send_text(wa_id, "Invalid DOB format. Use YYYY-MM-DD.")
+            parts = content.strip().split('/')
+            if len(parts) != 3:
+                raise ValueError
+            day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+            from datetime import date
+            date(year, month, day)  # validate
+        except (ValueError, IndexError):
+            await send_text(wa_id, "Invalid DOB format. Use DD/MM/YYYY (example 01/10/2000).")
+            return
+
+    if step == "address":
+        if len(content) > 80:
+            await send_text(wa_id, f"Address is too long ({len(content)} chars). Please keep it under 80 characters.")
             return
 
     fields_order = ["name", "assembly", "district", "dob", "blood_group", "address", "photo"]

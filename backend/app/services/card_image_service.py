@@ -101,10 +101,14 @@ def _title(text: str) -> str:
 
 def _calc_age(dob_str: str) -> int:
     try:
-        dob = date.fromisoformat(dob_str)
+        if '/' in dob_str:
+            parts = dob_str.strip().split('/')
+            dob = date(int(parts[2]), int(parts[1]), int(parts[0]))
+        else:
+            dob = date.fromisoformat(dob_str)
         today = date.today()
         return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, IndexError):
         return 0
 
 
