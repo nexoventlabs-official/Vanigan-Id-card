@@ -279,6 +279,7 @@ async def _send_registered_menu(wa_id: str, member: dict[str, Any]) -> None:
             ("menu:organizer", "Become a Organizer"),
             ("menu:poll", "Poll"),
             ("menu:referral", "Referral Link"),
+            ("menu:pvtltd", "Pvt Ltd Company?"),
         ],
     )
 
@@ -304,7 +305,7 @@ async def _send_download_cta(wa_id: str, member: dict[str, Any]) -> None:
 
 
 async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
-    registered_actions = {"menu:download", "menu:viewcard", "menu:organizer", "menu:poll", "menu:referral"}
+    registered_actions = {"menu:download", "menu:viewcard", "menu:organizer", "menu:poll", "menu:referral", "menu:pvtltd", "pvtltd:yes", "pvtltd:no"}
     if action not in registered_actions and not action.startswith("direct_download:") and not action.startswith("poll:"):
         return False
 
@@ -348,6 +349,25 @@ async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
 
     if action == "menu:referral":
         await _send_referral_link(wa_id, member)
+        return True
+
+    if action == "menu:pvtltd":
+        await send_reply_buttons(wa_id, "Do you have a Pvt Ltd Company?", [("pvtltd:yes", "Yes"), ("pvtltd:no", "No")])
+        return True
+
+    if action == "pvtltd:yes":
+        sessions = get_whatsapp_session_collection()
+        await sessions.update_one(
+            {"wa_id": wa_id},
+            {"$set": {"pvtltd_step": "company_name", "updated_at": _now_iso()}},
+        )
+        await send_text(wa_id, "Please send your Company Name.")
+        return True
+
+    if action == "pvtltd:no":
+        await send_text(wa_id, "Thank you!")
+        if member:
+            await _send_registered_menu(wa_id, member)
         return True
 
     return False
@@ -692,6 +712,21 @@ async def process_whatsapp_payload(payload: dict[str, Any]) -> None:
         handled = await _handle_registered_menu_action(wa_id, content)
         if handled:
             return
+
+    # Handle company name input for Pvt Ltd flow
+    if session and session.get("pvtltd_step") == "company_name" and msg_kind == "text" and content:
+        members = get_member_collection()
+        contact = normalize_contact_number(wa_id)
+        await members.update_one(
+            {"contact_number": contact, "status": {"$ne": "rejected"}},
+            {"$set": {"company_name": content, "updated_at": _now_iso()}},
+        )
+        await sessions.update_one({"wa_id": wa_id}, {"$unset": {"pvtltd_step": ""}})
+        await send_text(wa_id, f"Thanks for sharing! Your company *{content}* has been recorded.")
+        member = await _find_registered_member(wa_id)
+        if member:
+            await _send_registered_menu(wa_id, member)
+        return
 
     # Allow post-completion actions even when not in-progress.
     if msg_kind == "action" and content == "download_card" and session:
