@@ -305,7 +305,7 @@ async def _send_download_cta(wa_id: str, member: dict[str, Any]) -> None:
 
 
 async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
-    registered_actions = {"menu:download", "menu:viewcard", "menu:organizer", "menu:poll", "menu:referral", "menu:pvtltd", "pvtltd:yes", "pvtltd:no"}
+    registered_actions = {"menu:download", "menu:viewcard", "menu:organizer", "menu:poll", "menu:referral", "menu:pvtltd", "pvtltd:yes", "pvtltd:no", "pvtltd:edit", "pvtltd:remove", "pvtltd:back"}
     if action not in registered_actions and not action.startswith("direct_download:") and not action.startswith("poll:"):
         return False
 
@@ -352,7 +352,22 @@ async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
         return True
 
     if action == "menu:pvtltd":
-        await send_reply_buttons(wa_id, "Do you have a Pvt Ltd Company?", [("pvtltd:yes", "Yes"), ("pvtltd:no", "No")])
+        # Check if user already has a company name
+        members = get_member_collection()
+        contact = normalize_contact_number(wa_id)
+        full_member = await members.find_one(
+            {"contact_number": contact, "status": {"$ne": "rejected"}},
+            {"company_name": 1},
+        )
+        company = (full_member or {}).get("company_name", "") if full_member else ""
+        if company:
+            await send_reply_buttons(
+                wa_id,
+                f"Your Business Name: *{company}*",
+                [("pvtltd:edit", "Edit"), ("pvtltd:remove", "Remove"), ("pvtltd:back", "Back")],
+            )
+        else:
+            await send_reply_buttons(wa_id, "Do you have a Pvt Ltd Company?", [("pvtltd:yes", "Yes"), ("pvtltd:no", "No")])
         return True
 
     if action == "pvtltd:yes":
@@ -366,6 +381,32 @@ async def _handle_registered_menu_action(wa_id: str, action: str) -> bool:
 
     if action == "pvtltd:no":
         await send_text(wa_id, "Thank you!")
+        if member:
+            await _send_registered_menu(wa_id, member)
+        return True
+
+    if action == "pvtltd:edit":
+        sessions = get_whatsapp_session_collection()
+        await sessions.update_one(
+            {"wa_id": wa_id},
+            {"$set": {"pvtltd_step": "company_name", "updated_at": _now_iso()}},
+        )
+        await send_text(wa_id, "Please send your new Company Name.")
+        return True
+
+    if action == "pvtltd:remove":
+        members = get_member_collection()
+        contact = normalize_contact_number(wa_id)
+        await members.update_one(
+            {"contact_number": contact, "status": {"$ne": "rejected"}},
+            {"$unset": {"company_name": ""}, "$set": {"updated_at": _now_iso()}},
+        )
+        await send_text(wa_id, "Your company name has been removed.")
+        if member:
+            await _send_registered_menu(wa_id, member)
+        return True
+
+    if action == "pvtltd:back":
         if member:
             await _send_registered_menu(wa_id, member)
         return True
